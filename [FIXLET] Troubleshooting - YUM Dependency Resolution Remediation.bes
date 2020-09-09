@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BES xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="BES.xsd">
+	<Fixlet>
+		<Title>Troubleshooting - YUM Dependency Resolution Remediation</Title>
+		<Description><![CDATA[<P>This fixlet performs remediative actions against Linux endpoints where the YUM package management system is present, but experiencing issues that may negatively impact the perscribed BigFix patch policies/procedures.</P>]]></Description>
+		<Relevance>operating system as string as lowercase contains "linux"</Relevance>
+		<Relevance>exists file "yum" of folder "/usr/bin"</Relevance>
+		<Category>Troubleshooting, Support, YUM, Dependency Resolution, Remediation</Category>
+		<Source>HCL Lab Services</Source>
+		<SourceID>casey.cannady@hcl.com</SourceID>
+		<SourceReleaseDate>2020-09-09</SourceReleaseDate>
+		<SourceSeverity>High</SourceSeverity>
+		<CVENames></CVENames>
+		<SANSID></SANSID>
+		<MIMEField>
+			<Name>x-fixlet-modification-time</Name>
+			<Value>Wed, 09 Sep 2020 16:39:51 +0000</Value>
+		</MIMEField>
+		<Domain>BESC</Domain>
+		<DefaultAction ID="Action1">
+			<Description>
+				<PreLink>Click </PreLink>
+				<Link>here</Link>
+				<PostLink> to deploy this action.</PostLink>
+			</Description>
+			<ActionScript MIMEType="application/x-Fixlet-Windows-Shell"><![CDATA[// *** *************************************************************************** ***
+// *** Author        :: Casey Cannady (casey.cannady@hcl.com)                      ***
+// *** Description   :: YUM Dependancy Resolution Remediative Actions.             ***
+// *** Date Created  :: 2019-08-12                                                 ***
+// *** Date Modified :: 2020-09-09                                                 ***
+// *** *************************************************************************** ***
+
+// Declare action parameters
+parameter "_BesLogHeader"="**************************************************"
+parameter "_BesLogBeginTimeStamp"="| Starting YUM update process for {hostname}."
+parameter "_BesLogEndTimeStamp"="| YUM update process completed for {hostname}."
+parameter "_BesLogExitCode"="Command returned exit code "
+parameter "_BesLogNoRun"="| Last YUM update less than 3 days ago."
+parameter "_BesYumLog"="/var/opt/logs/bes_yum.log"
+
+// Make sure that the logs folder exists under the var and opt path
+if {not exists folder "/var/opt/logs"}
+	wait su - root -c "mkdir -p /var/opt/logs"
+endif
+
+// Check for existance and age of bes_yum.log
+if {exists file "/var/opt/logs/bes_yum.log"}
+	if {(modification time of file "/var/opt/logs/bes_yum.log") < (now - (day*3))}
+		parameter "_DoYumUpdate"="1"
+	else
+		parameter "_DoYumUpdate"="0"
+	endif
+else
+	parameter "_DoYumUpdate"="1"
+endif
+
+// Check parameter to run necessary update commands
+if {parameter "_DoYumUpdate" != "0"}
+	// Log details to bes_yum.log
+	wait su - root -c "echo '{parameter "_BesLogHeader"}' >> {parameter "_BesYumLog"}"
+	wait su - root -c "echo '   {now as string} {parameter "_BesLogBeginTimeStamp"}' >> {parameter "_BesYumLog"}"
+
+	// Execute yum-utils install commands as root
+	wait su - root -c "yum install yum-utils -y >> {parameter "_BesYumLog"}"
+	// Check action for non-zero exit code
+	parameter "__ExitCode1" = "{if exist exit code of action then exit code of action as string else "999"}"
+	if {parameter "__ExitCode1" != "0"}
+		// Log details to bes_yum.log
+		wait su - root -c "echo '   {now as string} {parameter "_BesLogExitCode"} {parameter "__ExitCode1"}' >> {parameter "_BesYumLog"}"
+		
+		// Re-raise error for action
+		exit {parameter "__ExitCode1"}
+	endif
+
+	// Execute package-cleanup --cleandupes commands as root
+	wait su - root -c "package-cleanup --cleandupes -y >> {parameter "_BesYumLog"}"
+	// Check action for non-zero exit code
+	parameter "__ExitCode2" = "{if exist exit code of action then exit code of action as string else "998"}"
+	if {parameter "__ExitCode2" != "0"}
+		// Log details to bes_yum.log
+		wait su - root -c "echo '   {now as string} {parameter "_BesLogExitCode"} {parameter "__ExitCode2"}' >> {parameter "_BesYumLog"}"
+		
+		// Re-raise error for action
+		exit {parameter "__ExitCode2"}
+	endif
+
+	// Execute yum clean all commands as root
+	wait su - root -c "yum clean all -y >> {parameter "_BesYumLog"}"
+	// Check action for non-zero exit code
+	parameter "__ExitCode3" = "{if exist exit code of action then exit code of action as string else "997"}"
+	if {parameter "__ExitCode3" != "0"}
+		// Log details to bes_yum.log
+		wait su - root -c "echo '   {now as string} {parameter "_BesLogExitCode"} {parameter "__ExitCode3"}' >> {parameter "_BesYumLog"}"
+		
+		// Re-raise error for action
+		exit {parameter "__ExitCode3"}
+	endif
+
+	// Log details to bes_yum.log
+	wait su - root -c "echo '   {now as string} {parameter "_BesLogEndTimeStamp"}' >> {parameter "_BesYumLog"}"
+else
+	// Log details to bes_yum.log
+	wait su - root -c "echo '{parameter "_BesLogHeader"}' >> {parameter "_BesYumLog"}"
+	wait su - root -c "echo '   {now as string} {parameter "_BesLogNoRun"}' >> {parameter "_BesYumLog"}"
+endif
+
+// Check for existance of reboot-required file
+if {exists file "/var/run/reboot-required"}	
+	// Restart required
+	action may require restart "Linux-BES-YUM-Reboot"
+endif
+
+// Force client to post updated results
+Notify Client ForceRefresh]]></ActionScript>
+			<SuccessCriteria Option="CustomRelevance">exit code of action != 0</SuccessCriteria>
+		</DefaultAction>
+	</Fixlet>
+</BES>
+
